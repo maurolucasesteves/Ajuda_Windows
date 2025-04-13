@@ -1,0 +1,279 @@
+# Windows Security Manager
+# Data: 13/04/2025
+# Descrição: Script para gerenciar configurações de segurança do Windows 11
+
+# Verificar se está executando como administrador
+$isAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+
+if (-not $isAdmin) {
+    Write-Host "Este script precisa ser executado como administrador." -ForegroundColor Red
+    Write-Host "Reiniciando com privilégios elevados..." -ForegroundColor Yellow
+    
+    # Reiniciar o script com privilégios elevados
+    Start-Process PowerShell -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`"" -Verb RunAs
+    exit
+}
+
+function Show-Menu {
+    Clear-Host
+    Write-Host "==== Gerenciador de Segurança do Windows 11 ====" -ForegroundColor Cyan
+    Write-Host "1. Verificar status atual das configurações de segurança" -ForegroundColor Green
+    Write-Host "2. Desativar Windows Defender" -ForegroundColor Yellow
+    Write-Host "3. Ativar Windows Defender" -ForegroundColor Yellow
+    Write-Host "4. Desativar UAC (Controle de Conta de Usuário)" -ForegroundColor Yellow
+    Write-Host "5. Ativar UAC (Controle de Conta de Usuário)" -ForegroundColor Yellow
+    Write-Host "6. Conceder Permissões Totais de Administrador" -ForegroundColor Yellow
+    Write-Host "7. Restaurar configurações padrão de segurança" -ForegroundColor Green
+    Write-Host "8. Sair" -ForegroundColor Red
+    Write-Host "===============================================" -ForegroundColor Cyan
+}
+
+function Check-SecurityStatus {
+    Write-Host "`n[Verificando status atual da segurança...]" -ForegroundColor Cyan
+    
+    # Verificar status do Windows Defender
+    $defenderStatus = Get-MpPreference | Select-Object DisableRealtimeMonitoring
+    if ($defenderStatus.DisableRealtimeMonitoring) {
+        Write-Host "Windows Defender (Proteção em tempo real): DESATIVADO" -ForegroundColor Red
+    } else {
+        Write-Host "Windows Defender (Proteção em tempo real): ATIVADO" -ForegroundColor Green
+    }
+    
+    # Verificar configurações do UAC
+    $UACStatus = Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" -Name "EnableLUA" 
+    if ($UACStatus.EnableLUA -eq 0) {
+        Write-Host "UAC (Controle de Conta de Usuário): DESATIVADO" -ForegroundColor Red
+    } else {
+        Write-Host "UAC (Controle de Conta de Usuário): ATIVADO" -ForegroundColor Green
+        
+        # Verificar nível do UAC
+        $UACLevel = Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" -Name "ConsentPromptBehaviorAdmin" -ErrorAction SilentlyContinue
+        if ($UACLevel) {
+            switch ($UACLevel.ConsentPromptBehaviorAdmin) {
+                0 { Write-Host "Nível do UAC: Nunca notificar (Nível mais baixo)" -ForegroundColor Red }
+                1 { Write-Host "Nível do UAC: Notificar somente quando aplicativos tentarem fazer alterações (sem escurecer área de trabalho)" -ForegroundColor Yellow }
+                2 { Write-Host "Nível do UAC: Notificar somente quando aplicativos tentarem fazer alterações (escurecer área de trabalho)" -ForegroundColor Yellow }
+                5 { Write-Host "Nível do UAC: Notificar sempre (Nível mais alto)" -ForegroundColor Green }
+                default { Write-Host "Nível do UAC: Configuração personalizada ($($UACLevel.ConsentPromptBehaviorAdmin))" -ForegroundColor Yellow }
+            }
+        }
+    }
+    
+    # Verificar Firewall do Windows
+    $firewallStatus = Get-NetFirewallProfile | Select-Object Name, Enabled
+    foreach ($profile in $firewallStatus) {
+        if ($profile.Enabled) {
+            Write-Host "Firewall do Windows ($($profile.Name)): ATIVADO" -ForegroundColor Green
+        } else {
+            Write-Host "Firewall do Windows ($($profile.Name)): DESATIVADO" -ForegroundColor Red
+        }
+    }
+    
+    # Verificar SmartScreen
+    $smartScreenStatus = Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer" -Name "SmartScreenEnabled" -ErrorAction SilentlyContinue
+    if ($smartScreenStatus) {
+        if ($smartScreenStatus.SmartScreenEnabled -eq "Off") {
+            Write-Host "SmartScreen: DESATIVADO" -ForegroundColor Red
+        } else {
+            Write-Host "SmartScreen: ATIVADO" -ForegroundColor Green
+        }
+    } else {
+        Write-Host "SmartScreen: Status desconhecido" -ForegroundColor Yellow
+    }
+    
+    Write-Host "`nPressione qualquer tecla para continuar..." -ForegroundColor Cyan
+    $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+}
+
+function Disable-WindowsDefender {
+    Write-Host "`n[Desativando Windows Defender...]" -ForegroundColor Yellow
+    
+    try {
+        # Desativar proteção em tempo real
+        Set-MpPreference -DisableRealtimeMonitoring $true
+        
+        # Desativar outras proteções
+        Set-MpPreference -DisableBehaviorMonitoring $true
+        Set-MpPreference -DisableBlockAtFirstSeen $true
+        Set-MpPreference -DisableIOAVProtection $true
+        Set-MpPreference -DisableScriptScanning $true
+        Set-MpPreference -SubmitSamplesConsent 2
+        
+        # Verificar se foi desativado
+        $defenderStatus = Get-MpPreference | Select-Object DisableRealtimeMonitoring
+        if ($defenderStatus.DisableRealtimeMonitoring) {
+            Write-Host "Windows Defender desativado com sucesso!" -ForegroundColor Green
+        } else {
+            Write-Host "Falha ao desativar completamente o Windows Defender." -ForegroundColor Red
+            Write-Host "Nota: No Windows 11, algumas configurações podem ser protegidas pelo sistema." -ForegroundColor Yellow
+        }
+    } catch {
+        Write-Host "Erro ao desativar o Windows Defender: $_" -ForegroundColor Red
+    }
+    
+    Write-Host "`nPressione qualquer tecla para continuar..." -ForegroundColor Cyan
+    $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+}
+
+function Enable-WindowsDefender {
+    Write-Host "`n[Ativando Windows Defender...]" -ForegroundColor Yellow
+    
+    try {
+        # Ativar proteção em tempo real
+        Set-MpPreference -DisableRealtimeMonitoring $false
+        
+        # Ativar outras proteções
+        Set-MpPreference -DisableBehaviorMonitoring $false
+        Set-MpPreference -DisableBlockAtFirstSeen $false
+        Set-MpPreference -DisableIOAVProtection $false
+        Set-MpPreference -DisableScriptScanning $false
+        Set-MpPreference -SubmitSamplesConsent 1
+        
+        Write-Host "Windows Defender ativado com sucesso!" -ForegroundColor Green
+    } catch {
+        Write-Host "Erro ao ativar o Windows Defender: $_" -ForegroundColor Red
+    }
+    
+    Write-Host "`nPressione qualquer tecla para continuar..." -ForegroundColor Cyan
+    $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+}
+
+function Disable-UAC {
+    Write-Host "`n[Desativando UAC (Controle de Conta de Usuário)...]" -ForegroundColor Yellow
+    
+    try {
+        # Desativar UAC
+        Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" -Name "EnableLUA" -Value 0
+        
+        # Definir nível de UAC para o mínimo (alternativa para manter habilitado mas minimizar interrupções)
+        Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" -Name "ConsentPromptBehaviorAdmin" -Value 0
+        
+        Write-Host "UAC desativado com sucesso!" -ForegroundColor Green
+        Write-Host "É necessário reiniciar o computador para aplicar as alterações." -ForegroundColor Yellow
+    } catch {
+        Write-Host "Erro ao desativar o UAC: $_" -ForegroundColor Red
+    }
+    
+    Write-Host "`nPressione qualquer tecla para continuar..." -ForegroundColor Cyan
+    $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+}
+
+function Enable-UAC {
+    Write-Host "`n[Ativando UAC (Controle de Conta de Usuário)...]" -ForegroundColor Yellow
+    
+    try {
+        # Ativar UAC
+        Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" -Name "EnableLUA" -Value 1
+        
+        # Configurar nível padrão do UAC
+        Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" -Name "ConsentPromptBehaviorAdmin" -Value 5
+        
+        Write-Host "UAC ativado com sucesso!" -ForegroundColor Green
+        Write-Host "É necessário reiniciar o computador para aplicar as alterações." -ForegroundColor Yellow
+    } catch {
+        Write-Host "Erro ao ativar o UAC: $_" -ForegroundColor Red
+    }
+    
+    Write-Host "`nPressione qualquer tecla para continuar..." -ForegroundColor Cyan
+    $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+}
+
+function Grant-AdminPermissions {
+    Write-Host "`n[Concedendo Permissões Totais de Administrador...]" -ForegroundColor Yellow
+    
+    try {
+        # Obter nome do usuário atual
+        $currentUser = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
+        
+        Write-Host "Configurando privilégios avançados para $currentUser..." -ForegroundColor Cyan
+        
+        # Adicionar usuário ao grupo de administradores (caso ainda não seja)
+        Add-LocalGroupMember -Group "Administradores" -Member $currentUser -ErrorAction SilentlyContinue
+        
+        # Desativar UAC para menos prompts
+        Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" -Name "ConsentPromptBehaviorAdmin" -Value 0
+        
+        # Configurar Registry para dar mais controle sobre o sistema
+        # 1. Desativar UAC para executáveis confiáveis
+        Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" -Name "EnableSecureUIAPaths" -Value 0 -ErrorAction SilentlyContinue
+        
+        # 2. Desativar bloqueio da execução de arquivos
+        Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Safer\CodeIdentifiers" -Name "AuthenticodeEnabled" -Value 0 -ErrorAction SilentlyContinue
+        
+        # 3. Configurar política de execução do PowerShell
+        Set-ExecutionPolicy Unrestricted -Force -ErrorAction SilentlyContinue
+        
+        # 4. Desativar Windows SmartScreen
+        Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer" -Name "SmartScreenEnabled" -Value "Off" -ErrorAction SilentlyContinue
+        
+        # 5. Desativar proteção em tempo real do Defender
+        Set-MpPreference -DisableRealtimeMonitoring $true -ErrorAction SilentlyContinue
+        
+        Write-Host "Permissões de administrador avançadas concedidas!" -ForegroundColor Green
+        Write-Host "Aviso: Algumas dessas alterações requerem reinicialização para ter efeito total." -ForegroundColor Yellow
+        Write-Host "Aviso: Estas configurações reduzem significativamente a segurança do sistema." -ForegroundColor Red
+    } catch {
+        Write-Host "Erro ao conceder permissões: $_" -ForegroundColor Red
+    }
+    
+    Write-Host "`nPressione qualquer tecla para continuar..." -ForegroundColor Cyan
+    $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+}
+
+function Restore-DefaultSecurity {
+    Write-Host "`n[Restaurando configurações padrão de segurança...]" -ForegroundColor Yellow
+    
+    try {
+        # Ativar UAC
+        Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" -Name "EnableLUA" -Value 1
+        Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" -Name "ConsentPromptBehaviorAdmin" -Value 5
+        
+        # Ativar Windows Defender
+        Set-MpPreference -DisableRealtimeMonitoring $false
+        Set-MpPreference -DisableBehaviorMonitoring $false
+        Set-MpPreference -DisableBlockAtFirstSeen $false
+        Set-MpPreference -DisableIOAVProtection $false
+        Set-MpPreference -DisableScriptScanning $false
+        
+        # Restaurar SmartScreen
+        Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer" -Name "SmartScreenEnabled" -Value "On" -ErrorAction SilentlyContinue
+        
+        # Restaurar política de execução do PowerShell
+        Set-ExecutionPolicy RemoteSigned -Force -ErrorAction SilentlyContinue
+        
+        # Restaurar configurações do Firewall
+        Set-NetFirewallProfile -Profile Domain,Public,Private -Enabled True
+        
+        Write-Host "Configurações padrão de segurança restauradas!" -ForegroundColor Green
+        Write-Host "Aviso: É recomendado reiniciar o computador para aplicar todas as alterações." -ForegroundColor Yellow
+    } catch {
+        Write-Host "Erro ao restaurar configurações: $_" -ForegroundColor Red
+    }
+    
+    Write-Host "`nPressione qualquer tecla para continuar..." -ForegroundColor Cyan
+    $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+}
+
+# Loop principal
+do {
+    Show-Menu
+    $choice = Read-Host "Digite sua opção"
+    
+    switch ($choice) {
+        "1" { Check-SecurityStatus }
+        "2" { Disable-WindowsDefender }
+        "3" { Enable-WindowsDefender }
+        "4" { Disable-UAC }
+        "5" { Enable-UAC }
+        "6" { Grant-AdminPermissions }
+        "7" { Restore-DefaultSecurity }
+        "8" { 
+            Write-Host "Saindo..." -ForegroundColor Red
+            Exit 
+        }
+        default { 
+            Write-Host "Opção inválida. Tente novamente." -ForegroundColor Red
+            Start-Sleep -Seconds 2 
+        }
+    }
+} while ($true)
