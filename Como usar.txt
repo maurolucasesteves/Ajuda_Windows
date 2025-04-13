@@ -1,0 +1,33 @@
+Como usar o script:
+
+Salve o código acima como um arquivo .ps1 (por exemplo, WindowsSecurityManager.ps1)
+Execute o PowerShell como administrador:
+
+Clique com o botão direito no ícone do PowerShell
+Selecione "Executar como administrador"
+
+
+Execute o script:
+
+Navegue até a pasta onde salvou o arquivo
+Digite: .\WindowsSecurityManager.ps1
+O script também tentará se elevar automaticamente caso não tenha sido iniciado como administrador
+
+
+
+Funcionalidades do script:
+
+Verificar status atual - Mostra o estado atual das configurações de segurança do sistema
+Desativar/Ativar Windows Defender - Permite desligar ou ligar a proteção em tempo real
+Desativar/Ativar UAC - Controla o Controle de Conta de Usuário que gera prompts de confirmação
+Conceder Permissões Totais de Administrador - Aplica várias configurações para maximizar os privilégios do usuário atual
+Restaurar configurações padrão - Reverte todas as alterações para o estado seguro padrão
+
+Notas importantes de aprendizado:
+
+O Windows 11 implementa várias camadas de segurança por motivos de proteção. Desativá-las pode deixar seu sistema vulnerável a malware e ataques.
+O UAC (Controle de Conta de Usuário) é uma camada de segurança projetada para impedir que software malicioso faça alterações no sistema sem sua permissão.
+As alterações de segurança geralmente exigem reinicialização para serem totalmente aplicadas.
+Algumas configurações podem ser protegidas pelo sistema e podem não ser facilmente alteradas, mesmo com este script.
+
+Este script é uma excelente ferramenta educacional para entender como funcionam as camadas de segurança do Windows 11 e como elas podem ser gerenciadas programaticamente.
